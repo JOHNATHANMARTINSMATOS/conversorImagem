@@ -6,8 +6,9 @@ from PIL import Image
 # Nome do arquivo para armazenar o último número usado
 arquivo_sequencia = "sequencia_nome.txt"
 
-# Variável global para a cor de fundo
+# Variável global para a cor de fundo e imagens selecionadas
 cor_de_fundo = None
+imagens_selecionadas = []  # Para armazenar imagens individuais selecionadas
 
 # Função para carregar o último número de sequência do arquivo
 def carregar_sequencia():
@@ -23,10 +24,22 @@ def salvar_sequencia(numero):
 
 # Função para selecionar o diretório de origem
 def selecionar_pasta_origem():
+    global imagens_selecionadas
+    imagens_selecionadas.clear()
     pasta_origem = filedialog.askdirectory(title="Selecione a pasta de imagens")
     if pasta_origem:
         entrada_origem.delete(0, tk.END)
         entrada_origem.insert(0, pasta_origem)
+
+# Função para selecionar arquivos individuais de origem
+def selecionar_arquivos_imagem():
+    global imagens_selecionadas
+    arquivos = filedialog.askopenfilenames(title="Selecione as imagens", 
+                                           filetypes=[("Todos os arquivos", "*.*")])
+    if arquivos:
+        imagens_selecionadas = list(arquivos)
+        entrada_origem.delete(0, tk.END)
+        entrada_origem.insert(0, f"{len(imagens_selecionadas)} arquivo(s) selecionado(s)")
 
 # Função para selecionar o diretório de destino
 def selecionar_pasta_destino():
@@ -56,44 +69,51 @@ def converter_imagens():
     # Carregar a sequência inicial
     sequencia = carregar_sequencia()
 
-    # Listar as imagens para contar e configurar a barra de progresso
-    imagens = [f for f in os.listdir(origem) if f.endswith((".jpg", ".jpeg", ".bmp", ".png"))]
+    # Identificar se usaremos uma pasta ou arquivos individuais
+    if imagens_selecionadas:
+        imagens = imagens_selecionadas
+    else:
+        pasta_imagens = [os.path.join(origem, f) for f in os.listdir(origem)]
+        imagens = [img for img in pasta_imagens]
+
     total_imagens = len(imagens)
     if total_imagens == 0:
-        messagebox.showwarning("Atenção", "Nenhuma imagem encontrada na pasta de origem.")
+        messagebox.showwarning("Atenção", "Nenhuma imagem encontrada na pasta de origem ou nos arquivos selecionados.")
         return
 
     barra_progresso["maximum"] = total_imagens
     barra_progresso["value"] = 0
 
-    # Loop pelas imagens na pasta de origem
-    for i, filename in enumerate(imagens):
-        img_path = os.path.join(origem, filename)
-        img = Image.open(img_path)
-        
-        # Aplicar cor de fundo se estiver definida e a imagem tiver transparência
-        if cor_de_fundo and img.mode in ("RGBA", "LA", "P"):
-            # Converter imagem com fundo transparente para o modo "RGBA"
-            img = img.convert("RGBA")
+    # Loop pelas imagens
+    for i, img_path in enumerate(imagens):
+        try:
+            img = Image.open(img_path)
             
-            # Criar um novo fundo na cor selecionada
-            background = Image.new("RGBA", img.size, cor_de_fundo)
+            # Aplicar cor de fundo se estiver definida e a imagem tiver transparência
+            if cor_de_fundo and img.mode in ("RGBA", "LA", "P"):
+                # Converter imagem com fundo transparente para o modo "RGBA"
+                img = img.convert("RGBA")
+                
+                # Criar um novo fundo na cor selecionada
+                background = Image.new("RGBA", img.size, cor_de_fundo)
+                
+                # Compor a imagem com o fundo
+                img = Image.alpha_composite(background, img)
             
-            # Compor a imagem com o fundo
-            img = Image.alpha_composite(background, img)
-        
-        # Converter a imagem final para "RGB" antes de salvar, caso necessário
-        if formato in ["jpeg", "bmp"]:  # JPEG e BMP não suportam transparência
-            img = img.convert("RGB")
-        
-        # Gerar um novo nome com base na sequência
-        new_filename = f"imagem_{sequencia}.{formato}"
-        img.save(os.path.join(destino, new_filename))
+            # Converter a imagem final para "RGB" antes de salvar, caso necessário
+            if formato in ["jpeg", "bmp"]:  # JPEG e BMP não suportam transparência
+                img = img.convert("RGB")
+            
+            # Gerar um novo nome com base na sequência
+            new_filename = f"imagem_{sequencia}.{formato}"
+            img.save(os.path.join(destino, new_filename))
 
-        # Incrementar a sequência e atualizar a barra de progresso
-        sequencia += 1
-        barra_progresso["value"] += 1
-        janela.update_idletasks()  # Atualiza a barra de progresso em tempo real
+            # Incrementar a sequência e atualizar a barra de progresso
+            sequencia += 1
+            barra_progresso["value"] += 1
+            janela.update_idletasks()  # Atualiza a barra de progresso em tempo real
+        except Exception as e:
+            print(f"Erro ao processar {img_path}: {e}")
 
     # Salvar a nova sequência no arquivo
     salvar_sequencia(sequencia)
@@ -104,14 +124,16 @@ def converter_imagens():
 # Configuração da interface gráfica
 janela = tk.Tk()
 janela.title("Conversor de Imagens")
-janela.geometry("700x500")
+janela.geometry("700x350")  # Ajuste de tamanho para evitar que a interface fique pequena
 
-# Diretório de origem
-tk.Label(janela, text="Pasta de Imagens:").grid(row=0, column=0, padx=10, pady=10, sticky="e")
+# Diretório de origem ou arquivos
+tk.Label(janela, text="Origem das Imagens:").grid(row=0, column=0, padx=10, pady=10, sticky="e")
 entrada_origem = tk.Entry(janela, width=40)
 entrada_origem.grid(row=0, column=1, padx=10, pady=10)
-botao_origem = tk.Button(janela, text="Selecionar", command=selecionar_pasta_origem)
-botao_origem.grid(row=0, column=2, padx=10, pady=10)
+botao_origem = tk.Button(janela, text="Selecionar Pasta", command=selecionar_pasta_origem)
+botao_origem.grid(row=0, column=2, padx=5, pady=10)
+botao_arquivos = tk.Button(janela, text="Selecionar Arquivos", command=selecionar_arquivos_imagem)
+botao_arquivos.grid(row=0, column=3, padx=5, pady=10)
 
 # Diretório de destino
 tk.Label(janela, text="Pasta de Destino:").grid(row=1, column=0, padx=10, pady=10, sticky="e")
